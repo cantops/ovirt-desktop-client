@@ -24,8 +24,7 @@ from globalconf import conf, IMGDIR
 from PyQt5.QtWidgets import QProgressBar, QPushButton, QDesktopWidget, QDialog, QLabel, QLineEdit, QGridLayout, QCheckBox, QMessageBox
 from PyQt5.QtGui import QImage, QPixmap, QIcon
 from PyQt5.QtCore import QBasicTimer, Qt
-from ovirtsdk.api import API
-from ovirtsdk.infrastructure.errors import ConnectionError, RequestError
+from ovirtsdk4 import Connection, Error
 
 class CheckCreds(QDialog):
     """
@@ -81,18 +80,26 @@ class CheckCreds(QDialog):
 
         if not conf.USERNAME:
             try:
-                kvm = API(url=conf.CONFIG['ovirturl'], username=self.uname + '@' + conf.CONFIG['ovirtdomain'], password=self.pw, insecure=True, timeout=int(conf.CONFIG['conntimeout']), filter=True)
-                conf.OVIRTCONN = kvm
+                conn = Connection(
+                  url=conf.CONFIG['ovirturl'],
+                  username=self.uname + '@' + conf.CONFIG['ovirtdomain'],
+                  password=self.pw,
+                  ca_file=conf.CONFIG['cafile'],
+                  insecure=True,
+                  timeout=int(conf.CONFIG['conntimeout']),
+                  headers={'filter':True}
+                )
+
+                conn.test(raise_exception=True)
+
+                conf.SOCKOBJ = conn
+                conf.OVIRTCONN = conn.system_service()
                 conf.USERNAME = self.uname
                 conf.PASSWORD = self.pw
                 self.status.setText(_('authenticated_and_storing'))
                 self.step = 49
-            except ConnectionError as e:
-                err.critical(self, _('apptitle') + ': ' + _('error'), _('ovirt_connection_error') + ': ' + sub('<[^<]+?>', '', str(e)))
-                self.status.setText(_('error_while_authenticating'))
-                self.step = 100
-            except RequestError as e:
-                err.critical(self, _('apptitle') + ': ' + _('error'), _('ovirt_request_error') + ': ' + sub('<[^<]+?>', '', str(e)))
+            except Error, e:
+                err.critical(self, _('apptitle') + ': ' + _('error'), _('ovirt_connection_error') + ': ' + str(e))
                 self.status.setText(_('error_while_authenticating'))
                 self.step = 100
         

@@ -20,6 +20,7 @@ class Configs:
     USERCREDSFILE=expanduser('~') + '/.ovirtclient'
     USERNAME=None
     PASSWORD=None
+    SOCKOBJ=None
     OVIRTCONN=None
     CONFIG={}
 conf = Configs()

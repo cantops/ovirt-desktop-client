@@ -31,10 +31,10 @@ from globalconf import *
 from credentials import Credentials
 from about import About
 from version import VERSION
+from ovirtsdk4 import Error
 from PyQt5.QtWidgets import QApplication, QDesktopWidget, QMessageBox, QGridLayout, QLabel, QWidget, QProgressBar, QScrollArea, QVBoxLayout, QAction, QToolBar
 from PyQt5.QtGui import QImage, QPixmap, QIcon
 from PyQt5.QtCore import Qt, QObjectCleanupHandler, pyqtSignal
-from ovirtsdk.infrastructure.errors import ConnectionError, RequestError
 
 class VmData:
     """
@@ -189,9 +189,9 @@ class OvirtClient(QWidget):
             Returns: -1, 0 or 1 depending on the name-based sorting
         """
 
-        if vm1.get_name().lower() < vm2.get_name().lower():
+        if vm1.name.lower() < vm2.name.lower():
             return -1
-        if vm1.get_name().lower() == vm2.get_name().lower():
+        if vm1.name.lower() == vm2.name.lower():
             return 0
         return 1
 
@@ -272,22 +272,25 @@ class OvirtClient(QWidget):
 
         if reply == QMessageBox.Yes:
             try:
-                vm = conf.OVIRTCONN.vms.get(id=self.vmdata[rowid].vmid)
-            except ConnectionError:
+                vms_service = conf.OVIRTCONN.vms_service()
+                vm = vms_service.list(search='id=%s' % (self.vmdata[rowid].vmid))[0]
+            except Error:
                 QMessageBox.critical(None, _('apptitle') + ': ' + _('error'), _('unexpected_connection_drop'))
                 quit()
 
             if curvmstatus == 'up':
                 try:
-                    vm.shutdown()
+                    vm_service = vms_service.vm_service(id=self.vmdata[rowid].vmid)
+                    vm_service.shutdown()
                     QMessageBox.information(None, _('apptitle') + ': ' + _('success'), _('shutting_down_vm'))
-                except RequestError:
+                except Error:
                     QMessageBox.warning(None, _('apptitle') + ': ' + _('warning'), _('vm_in_unchangeable_status'))
             if curvmstatus == 'down':
                 try:
-                    vm.start()
+                    vm_service = vms_service.vm_service(id=self.vmdata[rowid].vmid)
+                    vm_service.start()
                     QMessageBox.information(None, _('apptitle') + ': ' + _('success'), _('powering_up_vm'))
-                except RequestError:
+                except Error:
                     QMessageBox.warning(None, _('apptitle') + ': ' + _('warning'), _('vm_in_unchangeable_status'))
 
     def get_viewer_ticket(self, vmid):
@@ -439,14 +442,12 @@ class OvirtClient(QWidget):
         if vmtype == 'vmpool':
             try:
                 QMessageBox.information(None, _('apptitle') + ': ' + _('info'), _('acquiring_vm_from_pool'))
-                vmp = conf.OVIRTCONN.vmpools.get(id=self.vmdata[rowid].vmid)
-                vmp.allocatevm()
+                vmpool_service = conf.OVIRTCONN.vm_pools_service()
+                vmp = vmpool_service.pool_service(id=self.vmdata[rowid].vmid)
+                vmp.allocate_vm()
                 self.refresh_grid()
-            except ConnectionError:
-                QMessageBox.critical(None, _('apptitle') + ': ' + _('error'), _('unexpected_connection_drop'))
-                quit()
-            except RequestError:
-                QMessageBox.critical(None, _('apptitle') + ': ' + _('error'), _('cannot_attach_vm_to_user'))
+            except Error, e:
+                QMessageBox.critical(None, _('apptitle') + ': ' + _('error'), str(e))
         else:
             QMessageBox.warning(None, _('apptitle') + ': ' + _('warning'), _('object_is_not_a_vmpool'))
 
@@ -500,7 +501,7 @@ class OvirtClient(QWidget):
 
         # For cleanness reasons, we'll firstly show available VmPools
         for vm in vmpools:
-            vmname = vm.get_name()
+            vmname = vm.name
 
             # OS icon
             ostype = 'vmpool'
@@ -522,8 +523,8 @@ class OvirtClient(QWidget):
 
             # Store the correspondence between row number <-> VMPool data
             vmd = VmData()
-            vmd.vmid = vm.get_id()
-            vmd.vmname = vm.get_name()
+            vmd.vmid = vm.id
+            vmd.vmname = vm.name
             vmd.vmstatus = None
             vmd.vmtype = 'vmpool'
             self.vmdata[row] = vmd
@@ -546,11 +547,11 @@ class OvirtClient(QWidget):
         """
         # Now we'll show up the VMs
         for vm in vms:
-            vmname = vm.get_name()
-            vmstatus = vm.get_status().get_state() 
+            vmname = vm.name
+            vmstatus = vm.status.value
 
             # OS icon
-            ostype = self.get_os_icon(vm.get_os().get_type().lower())
+            ostype = self.get_os_icon(vm.os.type.lower())
             imageOsicon = self.make_button(ostype, '<b>%s</b> OS' % (ostype.capitalize()))
 
             # Machine name
@@ -579,8 +580,8 @@ class OvirtClient(QWidget):
 
             # Store the correspondence between row number <-> VM data
             vmd = VmData()
-            vmd.vmid = vm.get_id()
-            vmd.vmname = vm.get_name()
+            vmd.vmid = vm.id
+            vmd.vmname = vm.name
             vmd.vmstatus = vmstatus
             vmd.vmtype = 'vm'
             self.vmdata[row] = vmd
@@ -624,9 +625,11 @@ class OvirtClient(QWidget):
 
         try:
             # Try getting the VM list from oVirt
-            vms = sorted(conf.OVIRTCONN.vms.list(), cmp=self.compare_vms)
-            vmpools = sorted(conf.OVIRTCONN.vmpools.list(), cmp=self.compare_vms)
-        except ConnectionError:
+            vms_serv = conf.OVIRTCONN.vms_service()
+            vmpools_serv = conf.OVIRTCONN.vm_pools_service()
+            vms = sorted(vms_serv.list(), cmp=self.compare_vms)
+            vmpools = sorted(vmpools_serv.list(), cmp=self.compare_vms)
+        except Error:
             QMessageBox.critical(None, _('apptitle') + ': ' + _('error'), _('unexpected_connection_drop'))
             quit()
 
@@ -705,8 +708,8 @@ class OvirtClient(QWidget):
 
         if conf.OVIRTCONN:
             try:
-                conf.OVIRTCONN.disconnect()
-            except ConnectionError:
+                conf.SOCKOBJ.close()
+            except Error:
                 pass
 
         self.stopThread = True
@@ -755,8 +758,9 @@ class OvirtClient(QWidget):
         while 1 and not self.stopThread:
             if conf.OVIRTCONN:
                 try:
-                    ovirt_num_machines = len(conf.OVIRTCONN.vms.list())
-                except ConnectionError:
+                    vms_service = conf.OVIRTCONN.vms_service()
+                    ovirt_num_machines = len(vms_service.list())
+                except Error:
                     sys.exit('[ERROR] ' + _('unexpected_connection_drop'))
 
                 if ovirt_num_machines != len(self.vmdata):
@@ -767,12 +771,12 @@ class OvirtClient(QWidget):
                         vmid = self.vmdata[i].vmid
                         vmstatus = self.vmdata[i].vmstatus
                         try:
-                            ovirtvm = conf.OVIRTCONN.vms.get(id=vmid)
-                        except ConnectionError:
+                            ovirtvm = vms_service.list(search='id=%s' % (vmid))[0]
+                        except Error:
                             sys.exit('[ERROR] ' + _('unexpected_connection_drop'))
 
                         if ovirtvm:
-                            curstatus = ovirtvm.get_status().get_state()
+                            curstatus = ovirtvm.status.value
                             if vmstatus != curstatus:
                                 # If there has been a status change, emit the signal to update icons
                                 self.vmdata[i].vmstatus = curstatus
@@ -935,12 +939,20 @@ def checkConfig():
     try:
         ovirturl = config.get('ovirt', 'url')
     except ConfigParser.NoOptionError:
-        sys.exit("[ERROR] Configuration file (%s) is missing a missing parameter: Section: ovirt, parameter: url. Check config." % (conf.CONFIGFILE))
+        sys.exit("[ERROR] Configuration file (%s) is missing a mandatory parameter: Section: ovirt, parameter: url. Check config." % (conf.CONFIGFILE))
+
+    try:
+        cafile = config.get('ovirt', 'cafile')
+    except ConfigParser.NoOptionError:
+        sys.exit("[ERROR] Configuration file (%s) is missing a mandatory parameter: Section: ovirt, parameter: cafile. Check config." % (conf.CONFIGFILE))
+
+    if not isfile(cafile):
+        sys.exit("[ERROR] Cannot find the CA file (%s). Check if file exists and if so, check if you have reading permissions in your config file." % (cafile, conf.CONFIGFILE))
 
     try:
         ovirtdomain = config.get('ovirt', 'domain')
     except ConfigParser.NoOptionError:
-        sys.exit("[ERROR] Configuration file (%s) is missing a missing parameter: Section: ovirt, parameter: domain. Check config." % (conf.CONFIGFILE))
+        sys.exit("[ERROR] Configuration file (%s) is missing a mandatory parameter: Section: ovirt, parameter: domain. Check config." % (conf.CONFIGFILE))
 
     try:
         applang = config.get('app', 'lang')
@@ -1003,6 +1015,7 @@ def checkConfig():
 
     # Config OK, storing values
     conf.CONFIG['ovirturl'] = ovirturl
+    conf.CONFIG['cafile'] = cafile
     conf.CONFIG['ovirtdomain'] = ovirtdomain
     conf.CONFIG['applang'] = applang
     conf.CONFIG['conntimeout'] = conntimeout

@@ -89,6 +89,9 @@ To run the application, a file named `settings.conf` must exist in the same dire
 The beggining of this section is marked with the `[ovirt]` line and references some settings that are directly related to the oVirt infrastructure that you mean to connect to. It only has 2 parameters, and both are **mandatory**:
 
  * **url**: You oVirt infrastructure API URL. If you're using oVirt version 3.6.x, URL should be somewhat like: `https://myovirt.mydomain.com/api`. If you're using oVirt version 4.0.x or greater, URL should be somewhat like: `https://myovirt.mydomain.com/ovirt-engine/api`.
+
+ * **cafile**: Since oVirt 4.x, including the certificate of the oVirt instance is mandatory. For that, you have to take and export your oVirt certificate (you can do this connecting with your web browser to your URL and saving the certificate, or run the get_certificate.sh script). It doesn't matter whether the CA is self-signed or not: Since oVirt 4.x this parameter is mandatory. This parameter references the path of the exported certificate of your oVirt instance.
+
  * **domain**: The domain under which your users will authenticate. When you create an AAA authenticator (LDAP, Kerberos, ...), a domain name is created to match it. This value goes here, so users will authenticate as `username@domain` (Ex: LDAP, MyCompany, ...). It's the 'Profile' field value when you're logging into the oVirt web-based API.
  
 #### app section

@@ -1,0 +1,19 @@
+Upgrading from v. 1.0.x to v. 2.0.x
+===================================
+
+Version v. 1.0.x differs in v 2.0.x in the package version of
+the ovirt-engine-sdk-python package. The first version worked
+with version 3.6 of the SDK package, while version 2.0x works
+with version 4.1.x of the SDK package. This package introduces
+significant differences so the code had to be substantially
+rewritten. In order to upgrade from ovirt-desktop-client v.
+1.0.x to 2.0.x please run:
+
+   pip install -r requirements
+
+This will upgrade the ovirt-engine-sdk-python package which is
+needed to work with version 2.0.x of ovirt-desktop-client.
+
+Also, please define the mandatory parameter ovirt:cafile. From
+oVirt version 4.0 it is mandatory to specify the CA cert of
+the oVirt instance you want to connect to.

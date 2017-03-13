@@ -1,2 +1,2 @@
 pycurl
-ovirt-engine-sdk-python==3.6.7
+ovirt-engine-sdk-python==4.1.1
